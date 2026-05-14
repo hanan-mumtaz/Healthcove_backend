@@ -27,6 +27,7 @@ const allowedOrigins = [
   frontendOrigin,
   'http://localhost:5173',
   'http://localhost:3000',
+  'https://yourusername.github.io', // ✅ Add your GitHub Pages URL here
   /\.vercel\.app$/ // Crucial: Allows Vercel preview and production deployments
 ].filter(Boolean);
 
