@@ -8,6 +8,14 @@ const { googleCallback, logout, getMe } = require('../controllers/authController
 const { authMiddleware } = require('../middleware/authMiddleware');
 
 /**
+ * @route   GET /api/auth
+ * @desc    Check auth status
+ */
+router.get("/", (req, res) => {
+    res.json({ message: "Auth endpoint is active. Use /me or /google." });
+});
+
+/**
  * @route   GET /api/auth/google
  */
 router.get(
