@@ -1,4 +1,4 @@
-require("dotenv").config(); // ✅ Load environment variables
+require("dotenv").config();
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const User = require("../models/User");
@@ -10,60 +10,85 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      // Uses ENV variable on Vercel, or falls back to local path
       callbackURL: process.env.GOOGLE_CALLBACK_URL || "/api/auth/google/callback",
       passReqToCallback: true,
       prompt: "select_account",
-      proxy: true, // ✅ CRITICAL: Add this line for Vercel/Production
+      proxy: true, // ✅ REQUIRED for Vercel/HTTPS handling
     },
     async (request, accessToken, refreshToken, profile, done) => {
       try {
-        console.log("Google OAuth Profile:", profile);
+        console.log("Google OAuth Profile ID:", profile.id);
+        
         let user = await User.findOne({ googleId: profile.id });
+        const userEmail = profile.emails[0].value;
+        const userPicture = profile.photos[0].value;
 
         if (!user) {
-          // Check if user exists by email (if they previously signed up manually)
-          user = await User.findOne({ email: profile.emails[0].value });
+          // Check if user exists by email (to link a manual signup to Google)
+          user = await User.findOne({ email: userEmail });
           
           if (!user) {
-            // ✅ NEW USER: Save name AND picture
+            // NEW USER: Create fresh account
             user = new User({
               name: profile.displayName,
-              email: profile.emails[0].value,
+              email: userEmail,
               googleId: profile.id,
-              picture: profile.photos[0].value, // 📸 ADD THIS LINE
+              picture: userPicture,
+              role: 'client' // Default role for new signups
             });
             await user.save();
           } else {
-            // ✅ EXISTING MANUAL USER: Link Google ID and update picture
+            // EXISTING MANUAL USER: Link Google ID and update picture
             user.googleId = profile.id;
-            user.picture = profile.photos[0].value; // 📸 ADD THIS LINE
+            user.picture = userPicture;
             await user.save();
           }
         } else {
-          // ✅ EXISTING GOOGLE USER: Just update the picture in case it changed
-          user.picture = profile.photos[0].value; 
-          await user.save();
+          // EXISTING GOOGLE USER: Update picture if it changed
+          if (user.picture !== userPicture) {
+            user.picture = userPicture;
+            await user.save();
+          }
         }
 
-        // ✅ IMPORTANT: Your JWT only has 'id'. 
-        // Ensure your /auth/me route on the backend returns the full user object!
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-          expiresIn: "7d",
-        });
+        // ✅ Generate Custom JWT Token
+        const token = jwt.sign(
+          { id: user._id }, 
+          process.env.JWT_SECRET, 
+          { expiresIn: "7d" }
+        );
 
-        done(null, { user, token });
+        // Pass both user and token to the serializer
+        return done(null, { user, token });
       } catch (error) {
         console.error("Google OAuth Error:", error);
-        done(error, null);
+        return done(error, null);
       }
     }
   )
 );
 
+/**
+ * ✅ DEFENSIVE SERIALIZATION
+ * This handles both {user, token} objects from Google 
+ * AND standard user objects from local login.
+ */
+passport.serializeUser((data, done) => {
+  try {
+    // If data is the wrapper {user, token}, extract the ID
+    // If data is just the user document, use data._id
+    const id = data.user ? data.user._id : data._id;
+    
+    if (!id) {
+      return done(new Error("Serialization failed: No User ID found"), null);
+    }
+    done(null, id);
+  } catch (error) {
+    done(error, null);
+  }
+});
 
-
-// ✅ Serialize & Deserialize
-passport.serializeUser((user, done) => done(null, user.user._id));
 passport.deserializeUser(async (id, done) => {
   try {
     const user = await User.findById(id);
@@ -72,3 +97,5 @@ passport.deserializeUser(async (id, done) => {
     done(error, null);
   }
 });
+
+module.exports = passport;
