@@ -13,6 +13,7 @@ passport.use(
       callbackURL: process.env.GOOGLE_CALLBACK_URL || "/api/auth/google/callback",
       passReqToCallback: true,
       prompt: "select_account",
+      proxy: true, // ✅ CRITICAL: Add this line for Vercel/Production
     },
     async (request, accessToken, refreshToken, profile, done) => {
       try {
